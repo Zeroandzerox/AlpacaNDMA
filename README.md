@@ -133,14 +133,21 @@ The --days argument must be at least 2
 I have found it simplest to run this script using windows task scheduler. Starting slightly before market open ensures the script is running at open. I have included a check to ensure starts more than 24 hours from a market open stop immediately to avoid duplicate instances when running daily.
 
 ### Triggers 
+
 On a schedule
+
 Daily
+
 Start:  1/1/2026 6:00:00 AM 
 
 ### Actions
+
 Start A Program
+
 Program/Script: PATH_TO_PYTHON_INSTALLATION
+
 Arguments: PATH_TO_NDMA -d 200 -u universe
+
 Start in: PATH_TO_DIRECTORY_W_CONFIG
 
 Please note that task scheduler uses your system time. PATHS and argument values should be replaced as needed. PATHS may need to be enclosed in quotations if any of your directory names include a space.
@@ -181,7 +188,7 @@ This strategy is intentionally simple and has several important limitations.
 
 ### Fixed Order Quantities
 
-Every trade uses a fixed quantity of 10 shares. 
+Every buy order uses a fixed quantity of 10 shares. Sell orders use position size.  
 
 A signal does not guarantee that an order will execute. The strategy submits limit orders near the current bid/ask midpoint, but the market can move away before the order fills. for a more complete documentation of potential order failure modes please refer to [alpaca's documentation](https://docs.alpaca.markets/us/docs/paper-trading#rules-and-assumptions).
 
