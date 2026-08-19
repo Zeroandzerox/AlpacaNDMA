@@ -27,7 +27,6 @@ import argparse
 
 class NDMA():
     def __init__(self, N:int, symbols:list):
-        #environment variables for this process and all children.
         config = configparser.ConfigParser()
         with open('config.txt', 'r') as configfile:
             config.read_file(configfile,'config.txt')
@@ -59,7 +58,7 @@ class NDMA():
         quotes = self.client.get_stock_latest_quote(stockQuoteRequestHeaders)
         
         for symbol in df.index.get_level_values("symbol").unique():
-            logging.info(f'Evaluating {symbol}')
+            logging.debug(f'Evaluating {symbol}')
             closes = df.loc[symbol]['close']
             avg = closes.rolling(self.N).mean()
             
@@ -97,7 +96,7 @@ class NDMA():
             elif last_mid < last_NDMA and previous_close > previous_NDMA:
                 logging.info(f'Sell {symbol} @ {last_mid-0.01} breakout from prior close={previous_close} MA={previous_NDMA} to {last_NDMA}')
                 try:
-                    self.tradingClient.get_open_position(symbol)
+                    position = self.tradingClient.get_open_position(symbol)
                     getOrdersRequestHeader = GetOrdersRequest(status='open',symbols=[symbol])
                     orders = self.tradingClient.get_orders(getOrdersRequestHeader)
                     if len(orders)>0: #if there are one or more open orders for the security, cancel the outstanding orders then place a new order 
@@ -105,7 +104,7 @@ class NDMA():
                             self.tradingClient.cancel_order_by_id(order.id)
                     limitOrderRequestHeaders = LimitOrderRequest(
                         symbol=symbol,
-                        qty=10,
+                        qty=position.qty,
                         limit_price=round(last_mid-0.01,2),
                         side=OrderSide.SELL,
                         time_in_force=TimeInForce.DAY
@@ -135,12 +134,15 @@ parser = argparse.ArgumentParser(prog="NDMA",description="executes a stock tradi
 parser.add_argument('-d', '--days', type=int, default=50)
 parser.add_argument('-u', '--universe', default='universe')
 args = parser.parse_args()
+
 logging.basicConfig(
     filename=f'ndma_{datetime.date.today().isoformat()}.log',
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     force=True
 )
+logging.info("Logging started.")
+
 if args.days < 2:
     parser.error("--days must be greater than 1")
 
@@ -158,7 +160,13 @@ while True:
             ndma.run()
             time.sleep(60)
         else:
-            time.sleep(clock.next_open.timestamp()-time.time())
+            time_to_next_open = clock.next_open.timestamp()-time.time()
+            if time_to_next_open > (24*60*20):
+                logging.info("More than 24h to next open. Stopping")
+                logging.shutdown()
+                break
+            logging.info(f'Sleeping till open {time_to_next_open} seconds')
+            time.sleep(time_to_next_open)
     except Exception as ex:
         logging.exception(f'Exception {ex}')
         time.sleep(60)
