@@ -4,7 +4,7 @@ NDMA is a Python-based algorithmic trading strategy for [Alpaca](https://alpaca.
 
 The strategy is designed to run continuously during market hours and can be deployed as multiple independent processes, allowing different strategies and/or Alpaca accounts to run on the same machine.
 
-Warning: This software *can* place real stock orders through the Alpaca API. It is designed to be used as a validation test for more complex strategies when run parallel. Use [paper trading](https://docs.alpaca.markets/us/docs/paper-trading) in an account not running any other strategies or manual trades.
+Warning: This software *can* place real stock orders through the Alpaca API. It is designed to be used as a validation test for more complex strategies when run parallel. It is highly recommended you use [paper trading](https://docs.alpaca.markets/us/docs/paper-trading) in an account not running any other strategies or manual trades.
 
 ## How It Works
 
