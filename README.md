@@ -4,6 +4,7 @@ NDMA is a Python-based algorithmic trading strategy for [Alpaca](https://alpaca.
 
 The strategy is designed to run once per scheduled invocation during market hours. It can be deployed as an AWS Lambda function triggered by EventBridge Scheduler. Example chron expression(for AWS):
 > */2 9-15 ? * MON-FRI * 
+
 AWS does not allow expressions which execute >=1/minute
 
 Warning: This software *can* place real stock orders through the Alpaca API. It is designed to be used as a validation test for more complex strategies when run parallel. It is highly recommended you use [paper trading](https://docs.alpaca.markets/us/docs/paper-trading) in an account not running any other strategies or manual trades.
