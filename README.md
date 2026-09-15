@@ -2,7 +2,9 @@
 
 NDMA is a Python-based algorithmic trading strategy for [Alpaca](https://alpaca.markets/) that trades stocks when the current market price breaks through an N-day simple moving average (SMA).
 
-The strategy is designed to run continuously during market hours and can be deployed as multiple independent processes, allowing different strategies and/or Alpaca accounts to run on the same machine.
+The strategy is designed to run once per scheduled invocation during market hours. It can be deployed as an AWS Lambda function triggered by EventBridge Scheduler. Example chron expression(for AWS):
+> */2 9-15 ? * MON-FRI * 
+AWS does not allow expressions which execute >=1/minute
 
 Warning: This software *can* place real stock orders through the Alpaca API. It is designed to be used as a validation test for more complex strategies when run parallel. It is highly recommended you use [paper trading](https://docs.alpaca.markets/us/docs/paper-trading) in an account not running any other strategies or manual trades.
 
@@ -12,7 +14,7 @@ For each symbol in the configured universe, NDMA:
 
 1. Retrieves approximately 4 × N days of daily historical bars. (current safety buffer to ensure at least N bars are returned)
 2. Calculates the N-day simple moving average.
-3. Retrieves the latest IEX bid/ask quote.
+3. Retrieves the latest bid/ask quote.
 4. Calculates the current midpoint from the bid and ask.
 5. Looks for a breakout between the previous day's close and the current price relative to the moving average.
 
@@ -48,13 +50,7 @@ When a sell signal occurs, NDMA:
 
 ### Market Hours
 
-NDMA continuously checks the Alpaca market clock.
-
-If started when the market is closed, the process waits until the next market open.
-
-During market hours, the strategy runs approximately once per minute.
-
-The strategy intentionally stops when the market is less than five minutes from closing.
+Each Lambda invocation checks the Alpaca market clock once. If the market is closed or within five minutes of closing, the invocation exits without trading. When the market is open, it performs one strategy evaluation and exits.
 
 ## Requirements
 - Python 3.9+
@@ -69,7 +65,17 @@ Install the Python dependencies with:
 
 ## Configuration
 
-NDMA uses a local configuration file so that multiple accounts can be operated independently on the same machine. An example configuration file without credentials (config_template.txt) can be found in this repository. Your configuration file should be formatted as shown bellow and named config.txt
+For cloud deployment, configure these environment variables through the platform's secret manager. Environment variables take precedence over the local file:
+
+> ALPACA_API_KEY=YOUR_ALPACA_API_KEY
+>
+> ALPACA_SECRET_KEY=YOUR_ALPACA_SECRET_KEY
+>
+> ALPACA_ENDPOINT=https://paper-api.alpaca.markets/v2
+
+`ALPACA_ENDPOINT` defaults to the paper endpoint. Set it to the live endpoint only when live trading is intended. `NDMA_DAYS`, `NDMA_UNIVERSE`, and `LOG_LEVEL` are also supported.
+
+For local development, an example configuration file without credentials (`config_template.txt`) is included. Copy it to `config.txt`; The file should be formatted as shown below:
 
 > [APIKEYS]
 >
@@ -128,45 +134,27 @@ Both options can be combined:
 
 The --days argument must be at least 2
 
-## Running with windows task scheduler
+## AWS Lambda deployment
 
-I have found it simplest to run this script using windows task scheduler. Starting slightly before market open ensures the script is running at open. I have included a check to ensure starts more than 24 hours from a market open stop immediately to avoid duplicate instances when running daily.
+Package `lambda_function.py`, `ndma_strategy.py`, `universe`, and the installed dependencies into a Lambda deployment zip. Configure the handler as:
 
-### Triggers 
+> lambda_function.lambda_handler
 
-On a schedule
+Create an EventBridge Scheduler rule for the desired market-hours cadence, such as once per day before the expected market open. The function checks the market clock itself, so weekend, holiday, and late-close invocations exit without trading.
 
-Daily
+Store `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` in AWS Secrets Manager or encrypted Lambda environment variables. Set `ALPACA_ENDPOINT` to the paper endpoint while validating the deployment.
 
-Start:  1/1/2026 6:00:00 AM 
-
-### Actions
-
-Start A Program
-
-Program/Script: PATH_TO_PYTHON_INSTALLATION
-
-Arguments: PATH_TO_NDMA -d 200 -u universe
-
-Start in: PATH_TO_DIRECTORY_W_CONFIG
-
-Please note that task scheduler uses your system time. PATHS and argument values should be replaced as needed. PATHS may need to be enclosed in quotations if any of your directory names include a space.
+Set Lambda reserved concurrency to `1` to reduce overlapping invocations. For stronger protection, add a DynamoDB conditional lock before submitting orders.
 
 ## Multiple Accounts
 
-NDMA is intended to support multiple independent strategy instances on a single machine. Each instance should be run in its own directory with it's own configuration file containing unique API credentials. 
+Deploy separate Lambda functions or separate scheduled rules for independent Alpaca accounts, each with its own credentials and environment configuration.
 
 **Do not run NDMA in an account alongside other strategies or manual trades, the algorithm does not distinguish between orders it placed and orders placed independently**
 
 ## Logging
 
-NDMA writes execution logs to a file named according to the current date:
-
-> ndma_YYYY-MM-DD.log
-
-For example:
-
-> ndma_2026-08-19.log
+Lambda writes execution logs to CloudWatch through standard python logging.
 
 ## Order Behavior
 
@@ -194,19 +182,17 @@ A signal does not guarantee that an order will execute. The strategy submits lim
 
 ### Open Orders Are Repriced (Regardless of Source)
 
-The strategy may cancel an existing open order and replace it with a new order when another signal is generated. It should not be run in an account alongside other strategies or manual trades. No guardrails exist to prevent its interference with orders it did not generate.
+The strategy will cancel an existing open order and replace it with a new order when not filled by the time the script runs again. It should not be run in an account alongside other strategies or manual trades. No guardrails exist to prevent its interference with orders it did not generate.
 
 ### Market Data
 
-The strategy uses daily historical bars for the moving average and the IEX feed for the latest quote. The IEX quote may not represent the complete consolidated U.S. market.
-
-Market-data availability and whether quotes are real-time or delayed depends on your Alpaca account. 
+This script relies on Alpaca's documented default behavior for lastest quote source (SIP if you have unlimited subscription IEX otherwise). The IEX quote may not represent the complete consolidated U.S. market.
 
 # Disclaimers & Disclosures
 
 ## Completeness
 
-This script is still a WIP and may contain bugs, omissions or incomplete features.
+This script is still a WIP and may contain bugs, omissions or incomplete features. 
 
 ## AI Assistance
 
