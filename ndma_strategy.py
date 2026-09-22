@@ -54,15 +54,13 @@ class Settings:
     def get_secret(secret_name: str, region_name: str) -> str:
         secret_name = "Alpaca_50DMA_Secret_Key" if not secret_name else secret_name
         region_name = "us-east-1" if not region_name else region_name
-
-        # Create a Secrets Manager client
-        session = boto3.session.Session()
-        client = session.client(
-            service_name='secretsmanager',
-            region_name=region_name
-        )
-
         try:
+            # Create a Secrets Manager client
+            session = boto3.session.Session()
+            client = session.client(
+                service_name='secretsmanager',
+                region_name=region_name
+            )       
             get_secret_value_response = client.get_secret_value(
                 SecretId=secret_name
             )
@@ -81,9 +79,11 @@ class Settings:
             return secret_string
         return secret_string
 
+# Strategy is a function that takes a dataframe of stock bars and returns a list of values for each symbol
+# BreakoutStrategy determines if the last price has changed sides of the line defined by the last and second to last value in the list returned by the strategy function.
 
-class NDMA:
-    def __init__(self, N: int, symbols: list, settings: Settings):
+class BreakoutStrategy:
+    def __init__(self, N: int, symbols: list, settings: Settings, strategy):
         self.client = StockHistoricalDataClient(settings.api_key, settings.secret_key)
         self.tradingClient = TradingClient(
             settings.api_key,
@@ -92,6 +92,7 @@ class NDMA:
         )
         self.N = N
         self.symbols = symbols
+        self.strategy = strategy
 
     def run(self):
         shuffle(self.symbols)
@@ -111,17 +112,17 @@ class NDMA:
         for symbol in df.index.get_level_values('symbol').unique():
             logging.debug('Evaluating %s', symbol)
             closes = df.loc[symbol]['close']
-            avg = closes.rolling(self.N).mean()
+            signal = self.strategy(df.loc[symbol])
             previous_close = closes.iloc[-2]
             last_ask = quotes[symbol].ask_price
             last_bid = quotes[symbol].bid_price
             last_mid = (last_bid + last_ask) / 2
-            last_ndma = avg.iloc[-1]
-            previous_ndma = avg.iloc[-2]
-            if last_mid > last_ndma and previous_close < previous_ndma:
+            last_signal = signal.iloc[-1]
+            previous_signal = signal.iloc[-2]
+            if last_mid > last_signal and previous_close < previous_signal:
                 logging.info(
                     'Buy signal for %s @ %s, breakout from prior close=%s MA=%s to %s',
-                    symbol, last_ask, previous_close, previous_ndma, last_ndma,
+                    symbol, last_ask, previous_close, previous_signal, last_signal,
                 )
                 try:
                     self.tradingClient.get_open_position(symbol)
@@ -144,11 +145,11 @@ class NDMA:
                         qty=10,
                         limit_price=round(last_mid + 0.01, 2),
                         side=OrderSide.BUY,
-                        time_in_force=TimeInForce.DAY,
+                        time_in_force=TimeInForce.DAY
                     )
                     self.tradingClient.submit_order(order)
                     logging.info('Placed buy order for %s @ %s', symbol, round(last_mid + 0.01, 2))
-            elif last_mid < last_ndma and previous_close > previous_ndma:
+            elif last_mid < last_signal and previous_close > previous_signal:
                 logging.info('Sell signal for %s @ %s', symbol, last_mid - 0.01)
                 try:
                     position = self.tradingClient.get_open_position(symbol)
@@ -173,10 +174,32 @@ class NDMA:
             else:
                 logging.info(
                     'No break for %s @ %s between %s and %s',
-                    symbol, last_mid, previous_ndma, last_ndma,
+                    symbol, last_mid, previous_signal, last_signal,
                 )
 
+    #Simple Moving Average
+    def SMA(self, bars):
+        return bars['close'].rolling(window=self.N).mean()
 
+    #Rolling Day Volume Weighted Average Price for the past N days: the average price over the past N days weighted by volume.
+    def RDVWAP(self, bars):
+        return (bars['vwap'] * bars['volume']).rolling(window=self.N).sum() / bars['volume'].rolling(window=self.N).sum()
+
+    #Daily Volume Weighted Average Price: the average price of each given day based on the volume of the underlying trades (calculated by alpaca)
+    def VWAP(self, bars):
+        return bars['vwap']
+    
+    #Exponentially Weighted Moving Average
+    def EWMA(self, bars):
+        return bars['close'].ewm(span=self.N, adjust=False).mean()
+
+    #Inverse Variance Adjusted Volume Weighted Average Price
+    def IVVWAP(self, bars):
+        inverse_variance = bars['vwap'] / ((bars['high']-bars['low']) ** 2)
+        weight = inverse_variance * bars['volume']
+        return (bars['vwap'] * weight).rolling(window=self.N).sum() / weight.rolling(window=self.N).sum()
+
+    
 def get_universe(universe_path: Path) -> list:
     if not universe_path.exists():
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), universe_path)

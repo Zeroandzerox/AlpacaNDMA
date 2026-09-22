@@ -1,4 +1,6 @@
 config.txt
+Testing.py
+bars.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

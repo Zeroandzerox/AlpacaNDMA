@@ -3,7 +3,7 @@ import os
 import time
 from pathlib import Path
 
-from ndma_strategy import NDMA, Settings, get_universe
+from ndma_strategy import BreakoutStrategy, Settings, get_universe
 
 
 logger = logging.getLogger()
@@ -14,10 +14,11 @@ def lambda_handler(event, context):
     start_time = time.time()
     logging.info('Beginning NDMA Lambda invocation @ %s', time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(start_time)))
     settings = Settings.from_environment(Path(__file__).parent / 'config.txt')
-    trading_client = NDMA(
+    trading_client = BreakoutStrategy(
         int(os.getenv('NDMA_DAYS', '50')),
         get_universe(Path(__file__).parent / os.getenv('NDMA_UNIVERSE', 'universe')),
         settings,
+        BreakoutStrategy.SMA
     )
 
     clock = trading_client.tradingClient.get_clock()
