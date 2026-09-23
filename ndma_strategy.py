@@ -100,7 +100,7 @@ class BreakoutStrategy:
             symbol_or_symbols=self.symbols,
             timeframe=TimeFrame.Day,
             start=Timestamp.today() - Timedelta(self.N * 4, 'D'),
-            end=Timestamp.today()
+            end=Timestamp.today().normalize()
         )
         bars = self.client.get_stock_bars(stock_bars_request)
         df = bars.df
