@@ -79,11 +79,11 @@ class Settings:
             return secret_string
         return secret_string
 
-# Strategy is a function that takes a dataframe of stock bars and returns a list of values for each symbol
+# indicator is a function that takes a dataframe of stock bars and returns a list of values for each symbol
 # BreakoutStrategy determines if the last price has changed sides of the line defined by the last and second to last value in the list returned by the strategy function.
 
 class BreakoutStrategy:
-    def __init__(self, N: int, symbols: list, settings: Settings, strategy):
+    def __init__(self, N: int, symbols: list, settings: Settings, indicator):
         self.client = StockHistoricalDataClient(settings.api_key, settings.secret_key)
         self.tradingClient = TradingClient(
             settings.api_key,
@@ -92,7 +92,7 @@ class BreakoutStrategy:
         )
         self.N = N
         self.symbols = symbols
-        self.strategy = strategy
+        self.indicator = indicator
 
     def run(self):
         shuffle(self.symbols)
@@ -112,7 +112,7 @@ class BreakoutStrategy:
         for symbol in df.index.get_level_values('symbol').unique():
             logging.debug('Evaluating %s', symbol)
             closes = df.loc[symbol]['close']
-            signal = self.strategy(df.loc[symbol])
+            signal = self.indicator(df.loc[symbol])
             previous_close = closes.iloc[-2]
             last_ask = quotes[symbol].ask_price
             last_bid = quotes[symbol].bid_price
